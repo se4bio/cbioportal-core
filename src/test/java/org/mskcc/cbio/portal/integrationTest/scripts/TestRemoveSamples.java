@@ -21,15 +21,21 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mskcc.cbio.portal.dao.DaoCancerStudy;
 import org.mskcc.cbio.portal.dao.DaoException;
+import org.mskcc.cbio.portal.dao.DaoGeneticAlteration;
+import org.mskcc.cbio.portal.dao.DaoGeneticProfile;
+import org.mskcc.cbio.portal.dao.DaoGeneticProfileSamples;
 import org.mskcc.cbio.portal.dao.DaoSample;
 import org.mskcc.cbio.portal.model.CancerStudy;
+import org.mskcc.cbio.portal.model.GeneticProfile;
 import org.mskcc.cbio.portal.scripts.RemoveSamples;
 import org.springframework.test.annotation.Rollback;
 import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.SpringJUnit4ClassRunner;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -49,10 +55,14 @@ public class TestRemoveSamples {
 
     @Test
     public void testRemoveSamples() throws DaoException {
+        String sample1StableId = "TCGA-A1-A0SB-01";
+        String sample2StableId = "TCGA-A1-A0SD-01";
         CancerStudy cancerStudy = DaoCancerStudy.getCancerStudyByStableId("study_tcga_pub");
         List<String> beforeSampleIds = DaoSample.getSampleStableIdsByCancerStudy(cancerStudy.getInternalId());
-        assertTrue(beforeSampleIds.contains("TCGA-A1-A0SB-01"));
-        assertTrue(beforeSampleIds.contains("TCGA-A1-A0SD-01"));
+        assertTrue(beforeSampleIds.contains(sample1StableId));
+        assertTrue(beforeSampleIds.contains(sample2StableId));
+        int sample1InternalId = DaoSample.getSampleByCancerStudyAndSampleId(cancerStudy.getInternalId(), sample1StableId).getInternalId();
+        int sample2InternalId = DaoSample.getSampleByCancerStudyAndSampleId(cancerStudy.getInternalId(), sample2StableId).getInternalId();
 
         new RemoveSamples(new String[]{
                 "--study_ids", "study_tcga_pub",
@@ -60,9 +70,33 @@ public class TestRemoveSamples {
         }).run();
 
         DaoSample.reCache();
+
         List<String> afterSampleIds = DaoSample.getSampleStableIdsByCancerStudy(cancerStudy.getInternalId());
-        assertFalse(afterSampleIds.contains("TCGA-A1-A0SB-01"));
-        assertFalse(afterSampleIds.contains("TCGA-A1-A0SD-01"));
+        assertFalse(afterSampleIds.contains(sample1StableId));
+        assertFalse(afterSampleIds.contains(sample2StableId));
         assertEquals(beforeSampleIds.size() - 2, afterSampleIds.size());
+
+        List<GeneticProfile> geneticProfiles = List.of("study_tcga_pub_gistic", "study_tcga_pub_mrna", "study_tcga_pub_log2CNA",
+                "study_tcga_pub_rppa", "study_tcga_pub_treatment_ic50")
+                .stream().map(DaoGeneticProfile::getGeneticProfileByStableId).toList();
+        for (GeneticProfile geneticProfile : geneticProfiles) {
+            HashMap<Integer, HashMap<Integer, String>> geneticAlterationMapForEntityIds = DaoGeneticAlteration.getInstance()
+                    .getGeneticAlterationMapForEntityIds(geneticProfile.getGeneticProfileId(), null);
+            for (Map.Entry<Integer, HashMap<Integer, String>> gaEntry : geneticAlterationMapForEntityIds.entrySet()) {
+                assertFalse(gaEntry.getValue().containsKey(sample1InternalId),
+                        "Genetic entity with id "
+                                + gaEntry.getKey()
+                                + " of " + geneticProfile.getStableId() + "genetic profile"
+                                + " must have " + sample1StableId + " sample deleted");
+                assertFalse(gaEntry.getValue().containsKey(sample2InternalId),
+                        "Genetic entity with id "
+                                + gaEntry.getKey()
+                                + " of " + geneticProfile.getStableId() + "genetic profile"
+                                + " must have " + sample2StableId + " sample deleted");
+            }
+        }
+        int studyTcgaPubMethylationHm27 = DaoGeneticProfile.getGeneticProfileByStableId("study_tcga_pub_methylation_hm27").getGeneticProfileId();
+        assertTrue("The methylation platform has to loose it's last sample", DaoGeneticProfileSamples.getOrderedSampleList(
+                studyTcgaPubMethylationHm27).isEmpty());
     }
 }
