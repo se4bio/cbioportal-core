@@ -148,6 +148,23 @@ class DataImporterTests(unittest.TestCase):
         self.assertTrue(run_java.call_args_list.index(clinical_sample_call) < run_java.call_args_list.index(mutation_call))
         self.assertTrue(run_java.call_args_list.index(clinical_sample_call) < run_java.call_args_list.index(case_list_call))
 
+    @mock.patch('importer.cbioportalImporter.locate_jar')
+    @mock.patch('importer.cbioportalImporter.run_java')
+    def test_remove_sample(self, run_java, locate_jar):
+            '''
+            Tests java commands removal of study produces
+            '''
+            locate_jar.return_value = "test.jar"
+
+            args = ['remove-samples', '--study_ids', 'STUDY1,STUDY2', '--sample_ids', 'SAMPLE1,SAMPLE2']
+            parsed_args = cbioportalImporter.interface(args)
+            cbioportalImporter.main(parsed_args)
+
+            self.assertCountEqual(run_java.call_args_list, [
+                call(*common_part, 'org.mskcc.cbio.portal.util.VersionUtil',),
+                call(*common_part, 'org.mskcc.cbio.portal.scripts.RemoveSamples', '--study_ids', 'STUDY1,STUDY2', '--sample_ids', 'SAMPLE1,SAMPLE2'),
+            ])
+
 
 if __name__ == '__main__':
     unittest.main(buffer=True)
