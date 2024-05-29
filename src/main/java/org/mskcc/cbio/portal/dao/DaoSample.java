@@ -246,7 +246,6 @@ public class DaoSample {
     {
         Connection con = null;
         PreparedStatement pstmt = null;
-        ResultSet rs = null;
         try {
             con = JdbcUtil.getDbConnection(DaoSample.class);
             JdbcUtil.disableForeignKeyCheck(con);
@@ -258,10 +257,35 @@ public class DaoSample {
             throw new DaoException(e);
         }
         finally {
-            JdbcUtil.closeAll(DaoSample.class, con, pstmt, rs);
+            JdbcUtil.closeAll(DaoSample.class, con, pstmt, null);
         }
 
         clearCache();
+    }
+    public static void deleteSamples(Collection<Integer> internalSampleIds) throws DaoException
+    {
+        if (internalSampleIds == null || internalSampleIds.isEmpty()) {
+            return;
+        }
+        Connection con = null;
+        PreparedStatement pstmt = null;
+        try {
+            con = JdbcUtil.getDbConnection(DaoSample.class);
+            pstmt = con.prepareStatement("DELETE FROM `sample` WHERE `INTERNAL_ID` IN ("
+                    + String.join(",", Collections.nCopies(internalSampleIds.size(), "?"))
+                    + ")");
+            int parameterIndex = 1;
+            for (Integer internalSampleId : internalSampleIds) {
+                pstmt.setInt(parameterIndex++, internalSampleId);
+            };
+            pstmt.executeUpdate();
+        }
+        catch (SQLException e) {
+            throw new DaoException(e);
+        }
+        finally {
+            JdbcUtil.closeAll(DaoSample.class, con, pstmt, null);
+        }
     }
 
     private static Sample extractSample(ResultSet rs) throws SQLException
