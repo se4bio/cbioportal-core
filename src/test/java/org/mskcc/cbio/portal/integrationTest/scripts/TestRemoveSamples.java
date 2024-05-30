@@ -36,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Stream;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
@@ -76,9 +77,8 @@ public class TestRemoveSamples {
         assertFalse(afterSampleIds.contains(sample2StableId));
         assertEquals(beforeSampleIds.size() - 2, afterSampleIds.size());
 
-        List<GeneticProfile> geneticProfiles = List.of("study_tcga_pub_gistic", "study_tcga_pub_mrna", "study_tcga_pub_log2CNA",
-                "study_tcga_pub_rppa", "study_tcga_pub_treatment_ic50")
-                .stream().map(DaoGeneticProfile::getGeneticProfileByStableId).toList();
+        List<GeneticProfile> geneticProfiles = Stream.of("study_tcga_pub_gistic", "study_tcga_pub_mrna", "study_tcga_pub_log2CNA",
+                "study_tcga_pub_rppa", "study_tcga_pub_treatment_ic50").map(DaoGeneticProfile::getGeneticProfileByStableId).toList();
         for (GeneticProfile geneticProfile : geneticProfiles) {
             HashMap<Integer, HashMap<Integer, String>> geneticAlterationMapForEntityIds = DaoGeneticAlteration.getInstance()
                     .getGeneticAlterationMapForEntityIds(geneticProfile.getGeneticProfileId(), null);
