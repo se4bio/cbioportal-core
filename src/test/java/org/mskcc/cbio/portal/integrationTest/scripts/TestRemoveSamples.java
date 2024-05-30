@@ -38,7 +38,10 @@ import java.util.List;
 import java.util.Map;
 import java.util.stream.Stream;
 
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 
@@ -98,5 +101,74 @@ public class TestRemoveSamples {
         int studyTcgaPubMethylationHm27 = DaoGeneticProfile.getGeneticProfileByStableId("study_tcga_pub_methylation_hm27").getGeneticProfileId();
         assertTrue("The methylation platform has to loose it's last sample", DaoGeneticProfileSamples.getOrderedSampleList(
                 studyTcgaPubMethylationHm27).isEmpty());
+    }
+
+    @Test
+    public void testStudyIdsOptionIsRequired() {
+        RuntimeException runtimeException = assertThrows(RuntimeException.class, () ->
+                new RemoveSamples(new String[]{
+                        "--sample_ids", "TCGA-A1-A0SB-01"
+                }).run()
+        );
+        assertThat(runtimeException.getMessage(),
+                containsString("'--study_ids' argument has to specify study id"));
+    }
+
+    @Test
+    public void testStudyIdsOptionValueIsRequired() {
+        RuntimeException runtimeException = assertThrows(RuntimeException.class, () ->
+                new RemoveSamples(new String[]{
+                        "--study_ids", "",
+                        "--sample_ids", "TCGA-A1-A0SB-01"
+                }).run()
+        );
+        assertThat(runtimeException.getMessage(),
+                containsString("'--study_ids' argument has to specify study id"));
+    }
+
+    @Test
+    public void testSampleIdsOptionIsRequired() {
+        RuntimeException runtimeException = assertThrows(RuntimeException.class, () ->
+                new RemoveSamples(new String[]{
+                        "--study_ids", "study_tcga_pub",
+                }).run()
+        );
+        assertThat(runtimeException.getMessage(),
+                containsString("'--sample_ids' argument has to specify sample id"));
+    }
+
+    @Test
+    public void testSampleIdsOptionValueIsRequired() {
+        RuntimeException runtimeException = assertThrows(RuntimeException.class, () ->
+                new RemoveSamples(new String[]{
+                        "--study_ids", "study_tcga_pub",
+                        "--sample_ids", ""
+                }).run()
+        );
+        assertThat(runtimeException.getMessage(),
+                containsString("'--sample_ids' argument has to specify sample id"));
+    }
+
+    @Test
+    public void testNoStudyExists() {
+       RuntimeException runtimeException = assertThrows(RuntimeException.class, () ->
+           new RemoveSamples(new String[]{
+                   "--study_ids", "study_tcga_pub,non_existing_study",
+                   "--sample_ids", "TCGA-A1-A0SB-01"
+           }).run()
+       );
+       assertThat(runtimeException.getMessage(),
+               containsString("Cancer study with stable id=non_existing_study not found."));
+    }
+    @Test
+    public void testNoSampleExists() {
+        RuntimeException runtimeException = assertThrows(RuntimeException.class, () ->
+                new RemoveSamples(new String[]{
+                        "--study_ids", "study_tcga_pub",
+                        "--sample_ids", "TCGA-A1-A0SB-01,NON_EXISTING_SAMPLE"
+                }).run()
+        );
+        assertThat(runtimeException.getMessage(),
+                containsString("Sample with stable id=NON_EXISTING_SAMPLE not found in study with internal id="));
     }
 }

@@ -50,6 +50,7 @@ import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 
 /**
@@ -322,8 +323,10 @@ public class DaoSample {
     public static Set<Integer> findInternalSampleIdsInStudy(Integer internalStudyId, Set<String> sampleStableIds) {
         HashSet<Integer> internalSampleIds = new HashSet<>();
         for (String sampleId : sampleStableIds) {
-            Sample sampleByCancerStudyAndSampleId = DaoSample.getSampleByCancerStudyAndSampleId(internalStudyId, sampleId, true);
-            assert sampleByCancerStudyAndSampleId != null;
+            Sample sampleByCancerStudyAndSampleId = DaoSample.getSampleByCancerStudyAndSampleId(internalStudyId, sampleId);
+            if (sampleByCancerStudyAndSampleId == null) {
+                throw new NoSuchElementException("Sample with stable id=" + sampleId + " not found in study with internal id=" + internalStudyId + ".");
+            }
             internalSampleIds.add(sampleByCancerStudyAndSampleId.getInternalId());
         }
         return internalSampleIds;
