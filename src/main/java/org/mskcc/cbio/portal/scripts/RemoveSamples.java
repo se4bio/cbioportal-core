@@ -21,32 +21,19 @@ import joptsimple.OptionException;
 import joptsimple.OptionParser;
 import joptsimple.OptionSet;
 import joptsimple.OptionSpec;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.lang3.tuple.ImmutablePair;
-import org.apache.commons.lang3.tuple.Pair;
 import org.jetbrains.annotations.NotNull;
 import org.mskcc.cbio.portal.dao.DaoCancerStudy;
 import org.mskcc.cbio.portal.dao.DaoException;
-import org.mskcc.cbio.portal.dao.DaoGeneticAlteration;
-import org.mskcc.cbio.portal.dao.DaoGeneticProfile;
-import org.mskcc.cbio.portal.dao.DaoGeneticProfileSamples;
-import org.mskcc.cbio.portal.dao.DaoSample;
 import org.mskcc.cbio.portal.dao.JdbcUtil;
-import org.mskcc.cbio.portal.model.GeneticProfile;
-import org.mskcc.cbio.portal.model.Sample;
+import org.mskcc.cbio.portal.model.CancerStudy;
 import org.mskcc.cbio.portal.util.ProgressMonitor;
 
-import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Map;
+import java.util.NoSuchElementException;
 import java.util.Set;
 import java.util.stream.Collectors;
 
-import static org.cbioportal.web.parameter.sort.SampleSortBy.sampleId;
+import static org.mskcc.cbio.portal.dao.DaoSample.removeSamplesEverywhereInStudy;
 
 /**
  * Command Line Tool to Remove Samples in Cancer Studies
@@ -70,67 +57,31 @@ public class RemoveSamples extends ConsoleRunnable {
     }
 
     private void doRun() {
+        ProgressMonitor.setCurrentMessage("Start removing sample(s) from study(ies).");
         parseArgs();
-        ProgressMonitor.setCurrentMessage("Removing sample id(s) ("
-                + String.join(", ", sampleIds)
-                + ") from study(ies) with id(s) ("
-                + String.join(", ", studyIds) + ")...");
         ProgressMonitor.logDebug("Reading study id(s) from the database.");
-        final Set<Integer> internalStudyIds = studyIds.stream().map(studyId -> {
+        final Set<CancerStudy> cancerStudies = studyIds.stream().map(studyId -> {
             try {
-                return DaoCancerStudy.getCancerStudyByStableId(studyId).getInternalId();
+                CancerStudy cancerStudy = DaoCancerStudy.getCancerStudyByStableId(studyId);
+                if (cancerStudy == null) {
+                    throw new NoSuchElementException("Cancer study with stable id=" + studyId + " not found.");
+                }
+                return cancerStudy;
             } catch (DaoException e) {
                 throw new RuntimeException(e);
             }
         }).collect(Collectors.toUnmodifiableSet());
-        ProgressMonitor.logDebug("Found study(ies) with the following internal id(s):" + internalStudyIds.stream().map(id -> Integer.toString(id)).collect(Collectors.joining(", ")));
-        ProgressMonitor.logDebug("Reading internal sample id(s) from the database.");
-        final Map<Integer, Set<Integer>> internalStudyIdToInternalSampleIds = new HashMap<>();
-        for (Integer internalStudyId : internalStudyIds) {
-            ProgressMonitor.logDebug("Searching for samples in study with internal id=" + internalStudyId);
-            HashSet<Integer> internalSampleIds = new HashSet<>();
-            internalStudyIdToInternalSampleIds.put(internalStudyId, internalSampleIds);
-            for (String sampleId : sampleIds) {
-                Sample sampleByCancerStudyAndSampleId = DaoSample.getSampleByCancerStudyAndSampleId(internalStudyId, sampleId);
-                if (sampleByCancerStudyAndSampleId != null) {
-                    internalSampleIds.add(sampleByCancerStudyAndSampleId.getInternalId());
-                }
-            }
-            ProgressMonitor.logDebug("Found sample(s) with the following internal id(s):" + internalSampleIds.stream().map(id -> Integer.toString(id)).collect(Collectors.joining(", ")));
-        }
         try {
-            for (Integer internalStudyId : internalStudyIds) {
-                ProgressMonitor.logDebug("Removing samples in study with internal id=" + internalStudyId);
-                Set<Integer> internalSampleIds = internalStudyIdToInternalSampleIds.get(internalStudyId);
-                List<GeneticProfile> geneticProfiles = DaoGeneticProfile.getAllGeneticProfiles(internalStudyId);
-                for (GeneticProfile geneticProfile : geneticProfiles) {
-                    List<Integer> orderedSampleList = DaoGeneticProfileSamples.getOrderedSampleList(geneticProfile.getGeneticProfileId());
-                    if (orderedSampleList.removeAll(internalSampleIds)) {
-                        ProgressMonitor.logDebug("There are samples to delete for genetic profile with the stable id=" + geneticProfile.getStableId());
-
-                        HashMap<Integer, HashMap<Integer, String>> geneticAlterationMapForEntityIds = DaoGeneticAlteration.getInstance().getGeneticAlterationMapForEntityIds(geneticProfile.getGeneticProfileId(), null);
-                        for (Map.Entry<Integer, HashMap<Integer, String>> entry: geneticAlterationMapForEntityIds.entrySet()) {
-                            DaoGeneticAlteration.getInstance().deleteAllRecordsInGeneticProfile(geneticProfile.getGeneticProfileId(), entry.getKey());
-                            if (!orderedSampleList.isEmpty()) {
-                                String[] values = orderedSampleList.stream().map(isid -> entry.getValue().get(isid)).toArray(String[]::new);
-                                DaoGeneticAlteration.getInstance().addGeneticAlterationsForGeneticEntity(geneticProfile.getGeneticProfileId(), entry.getKey(), values);
-                            }
-                        }
-                        DaoGeneticProfileSamples.deleteAllSamplesInGeneticProfile(geneticProfile.getGeneticProfileId());
-                        if (!orderedSampleList.isEmpty()) {
-                            DaoGeneticProfileSamples.addGeneticProfileSamples(geneticProfile.getGeneticProfileId(), orderedSampleList);
-                        }
-                    } else {
-                        ProgressMonitor.logDebug("No samples to delete for genetic profile with the stable id=" + geneticProfile.getStableId());
-                    }
-                }
-                ProgressMonitor.logDebug("Deleting samples from the rest of the tables for study with internal id=" + internalStudyId);
-                DaoSample.deleteSamples(internalSampleIds);
+            for (CancerStudy cancerStudy : cancerStudies) {
+                ProgressMonitor.setCurrentMessage("Removing sample with stable id(s) ("
+                        + String.join(", ", sampleIds)
+                        + ") from study with stable id=" + cancerStudy.getCancerStudyStableId() + " ...");
+                removeSamplesEverywhereInStudy(cancerStudy.getInternalId(), sampleIds);
             }
         } catch (DaoException e) {
             throw new RuntimeException(e);
         }
-        ProgressMonitor.setCurrentMessage("Done");
+        ProgressMonitor.setCurrentMessage("Done removing sample(s) from study(ies).");
     }
 
     private void parseArgs() {

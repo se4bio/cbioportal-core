@@ -32,18 +32,28 @@
 
 package org.mskcc.cbio.portal.dao;
 
+import com.fasterxml.jackson.databind.node.ObjectNode;
+import org.apache.commons.lang3.StringUtils;
 import org.mskcc.cbio.portal.model.CanonicalGene;
+import org.mskcc.cbio.portal.model.GeneticProfile;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
 import java.util.Map.Entry;
-
-import com.fasterxml.jackson.databind.node.ObjectNode;
-
-import org.apache.commons.lang3.StringUtils;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * Data Access Object for the Genetic Alteration Table.
@@ -51,6 +61,9 @@ import org.apache.commons.lang3.StringUtils;
  * @author Ethan Cerami.
  */
 public class DaoGeneticAlteration {
+
+    private static final Logger log = LoggerFactory.getLogger(DaoGeneticAlteration.class);
+
     private static final String DELIM = ",";
     public static final String NAN = "NaN";
     private static DaoGeneticAlteration daoGeneticAlteration = null;
@@ -468,5 +481,49 @@ public class DaoGeneticAlteration {
         } finally {
             JdbcUtil.closeAll(DaoGeneticAlteration.class, con, pstmt, rs);
         }
+    }
+
+    /**
+     * Removes sample in genetic alterations' data for a study
+     * @param internalStudyId - internal id of study to remove samples in genetic alterations data
+     * @param internalSampleIdsToRemove - internal ids of samples to remove
+     * @throws DaoException
+     */
+    public void removeSamplesInGeneticAlterationsForStudy(int internalStudyId, Set<Integer> internalSampleIdsToRemove) throws DaoException {
+        List<GeneticProfile> geneticProfiles = DaoGeneticProfile.getAllGeneticProfiles(internalStudyId);
+        for (GeneticProfile geneticProfile : geneticProfiles) {
+            Set<Integer> removedInternalSampleIds = removeSamplesInGeneticAlterationsForGeneticProfile(geneticProfile.getGeneticProfileId(), internalSampleIdsToRemove);
+            log.debug("Genetic alterations data for {} sample ids ouf of {} requested have been removed for genetic profile with stable id={}",
+                    removedInternalSampleIds, internalSampleIdsToRemove, geneticProfile.getStableId());
+        }
+    }
+
+    /**
+     * Removes sample in genetic alterations' data for a genetic profile
+     * @param geneticProfileId - internal id of genetic profile to remove samples in genetic alteration data
+     * @param internalSampleIdsToRemove - internal ids of samples to remove
+     * @return set of sample internal ids that were actually removed
+     * @throws DaoException
+     */
+    public Set<Integer> removeSamplesInGeneticAlterationsForGeneticProfile(int geneticProfileId, Set<Integer> internalSampleIdsToRemove) throws DaoException {
+        List<Integer> orderedSampleList = DaoGeneticProfileSamples.getOrderedSampleList(geneticProfileId);
+        Set<Integer> actualInternalSampleIdsToRemove = orderedSampleList.stream()
+                .filter(internalSampleIdsToRemove::contains).collect(Collectors.toUnmodifiableSet());
+        if (!actualInternalSampleIdsToRemove.isEmpty()) {
+            orderedSampleList.removeAll(actualInternalSampleIdsToRemove);
+            HashMap<Integer, HashMap<Integer, String>> geneticAlterationMapForEntityIds = DaoGeneticAlteration.getInstance().getGeneticAlterationMapForEntityIds(geneticProfileId, null);
+            for (Map.Entry<Integer, HashMap<Integer, String>> entry : geneticAlterationMapForEntityIds.entrySet()) {
+                DaoGeneticAlteration.getInstance().deleteAllRecordsInGeneticProfile(geneticProfileId, entry.getKey());
+                if (!orderedSampleList.isEmpty()) {
+                    String[] values = orderedSampleList.stream().map(isid -> entry.getValue().get(isid)).toArray(String[]::new);
+                    DaoGeneticAlteration.getInstance().addGeneticAlterationsForGeneticEntity(geneticProfileId, entry.getKey(), values);
+                }
+            }
+            DaoGeneticProfileSamples.deleteAllSamplesInGeneticProfile(geneticProfileId);
+            if (!orderedSampleList.isEmpty()) {
+                DaoGeneticProfileSamples.addGeneticProfileSamples(geneticProfileId, orderedSampleList);
+            }
+        }
+        return actualInternalSampleIdsToRemove;
     }
 }

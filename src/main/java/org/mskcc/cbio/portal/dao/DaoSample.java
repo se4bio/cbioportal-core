@@ -32,12 +32,25 @@
 
 package org.mskcc.cbio.portal.dao;
 
-import org.mskcc.cbio.portal.model.*;
-
+import org.mskcc.cbio.portal.model.Patient;
+import org.mskcc.cbio.portal.model.Sample;
 import org.mskcc.cbio.portal.util.ProgressMonitor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
-import java.sql.*;
-import java.util.*;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 /**
  * DAO to `sample`.
@@ -45,6 +58,9 @@ import java.util.*;
  * @author Benjamin Gross
  */
 public class DaoSample {
+
+
+    private static final Logger log = LoggerFactory.getLogger(DaoSample.class);
 
     private static final int MISSING_CANCER_STUDY_ID = -1;
 
@@ -293,5 +309,23 @@ public class DaoSample {
         return new Sample(rs.getInt("INTERNAL_ID"),
                           rs.getString("STABLE_ID"),
                           rs.getInt("PATIENT_ID"));
+    }
+
+    public static void removeSamplesEverywhereInStudy(int internalStudyId, Set<String> sampleStableIds) throws DaoException {
+        log.info("Removing {} samples from study with internal id={} ...", sampleStableIds, internalStudyId);
+        Set<Integer> internalSampleIds = findInternalSampleIdsInStudy(internalStudyId, sampleStableIds);
+        DaoGeneticAlteration.getInstance().removeSamplesInGeneticAlterationsForStudy(internalStudyId, internalSampleIds);
+        DaoSample.deleteSamples(internalSampleIds);
+        log.info("Removing {} samples from study with internal id={} done.", sampleStableIds, internalStudyId);
+    }
+
+    public static Set<Integer> findInternalSampleIdsInStudy(Integer internalStudyId, Set<String> sampleStableIds) {
+        HashSet<Integer> internalSampleIds = new HashSet<>();
+        for (String sampleId : sampleStableIds) {
+            Sample sampleByCancerStudyAndSampleId = DaoSample.getSampleByCancerStudyAndSampleId(internalStudyId, sampleId, true);
+            assert sampleByCancerStudyAndSampleId != null;
+            internalSampleIds.add(sampleByCancerStudyAndSampleId.getInternalId());
+        }
+        return internalSampleIds;
     }
 }
