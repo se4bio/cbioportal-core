@@ -37,6 +37,7 @@ from .cbioportal_common import IMPORT_STUDY_CLASS
 from .cbioportal_common import UPDATE_STUDY_STATUS_CLASS
 from .cbioportal_common import REMOVE_STUDY_CLASS
 from .cbioportal_common import REMOVE_SAMPLES_CLASS
+from .cbioportal_common import REMOVE_PATIENTS_CLASS
 from .cbioportal_common import IMPORT_CASE_LIST_CLASS
 from .cbioportal_common import ADD_CASE_LIST_CLASS
 from .cbioportal_common import VERSION_UTIL_CLASS
@@ -55,10 +56,11 @@ IMPORT_CANCER_TYPE = "import-cancer-type"
 IMPORT_STUDY = "import-study"
 REMOVE_STUDY = "remove-study"
 REMOVE_SAMPLES = "remove-samples"
+REMOVE_PATIENTS = "remove-patients"
 IMPORT_STUDY_DATA = "import-study-data"
 IMPORT_CASE_LIST = "import-case-list"
 
-COMMANDS = [IMPORT_CANCER_TYPE, IMPORT_STUDY, IMPORT_STUDY_DATA, IMPORT_CASE_LIST, REMOVE_STUDY, REMOVE_SAMPLES]
+COMMANDS = [IMPORT_CANCER_TYPE, IMPORT_STUDY, IMPORT_STUDY_DATA, IMPORT_CASE_LIST, REMOVE_STUDY, REMOVE_SAMPLES, REMOVE_PATIENTS]
 
 # ------------------------------------------------------------------------------
 # sub-routines
@@ -113,6 +115,15 @@ def remove_samples(jvm_args, study_ids, sample_ids):
     args.append(study_ids)
     args.append("--sample_ids")
     args.append(sample_ids)
+    run_java(*args)
+
+def remove_patients(jvm_args, study_ids, patient_ids):
+    args = jvm_args.split(' ')
+    args.append(REMOVE_PATIENTS_CLASS)
+    args.append("--study_ids")
+    args.append(study_ids)
+    args.append("--patient_ids")
+    args.append(patient_ids)
     run_java(*args)
 
 def update_case_lists(jvm_args, meta_filename, case_lists_file_or_dir = None):
@@ -224,7 +235,7 @@ def process_case_lists(jvm_args, case_list_dir):
         if not (case_list.startswith('.') or case_list.endswith('~')):
             import_case_list(jvm_args, os.path.join(case_list_dir, case_list))
 
-def process_command(jvm_args, command, meta_filename, data_filename, study_ids, sample_ids, update_generic_assay_entity = None):
+def process_command(jvm_args, command, meta_filename, data_filename, study_ids, patient_ids, sample_ids, update_generic_assay_entity = None):
     if command == IMPORT_CANCER_TYPE:
         import_cancer_type(jvm_args, data_filename)
     elif command == IMPORT_STUDY:
@@ -240,6 +251,8 @@ def process_command(jvm_args, command, meta_filename, data_filename, study_ids, 
             raise RuntimeError('Your command uses both -id and -meta. Please, use only one of the two parameters.')
     elif command == REMOVE_SAMPLES:
         remove_samples(jvm_args, study_ids, sample_ids)
+    elif command == REMOVE_PATIENTS:
+        remove_patients(jvm_args, study_ids, patient_ids)
     elif command == IMPORT_STUDY_DATA:
         import_data(jvm_args, meta_filename, data_filename, update_generic_assay_entity)
     elif command == IMPORT_CASE_LIST:
@@ -575,6 +588,12 @@ def interface(args=None):
     remove_samples.add_argument('--sample_ids', type=str, required=True,
                         help='Sample ID(s). Comma separated, if multiple.')
 
+    remove_patients = subparsers.add_parser('remove-patients', parents=[], add_help=True)
+    remove_patients.add_argument('--study_ids', type=str, required=True,
+                        help='Cancer Study ID(s) that contains sample(s). Comma separated, if multiple.')
+    remove_patients.add_argument('--patient_ids', type=str, required=True,
+                        help='Patient ID(s). Comma separated, if multiple.')
+
     parser.add_argument('-c', '--command', type=str, required=False,
                         help='This argument is outdated. Please use the listed subcommands, without the -c flag. '
                         'Command for import. Allowed commands: ' + allowed_commands_csv)
@@ -669,7 +688,8 @@ def main(args):
             args.meta_filename,
             args.data_filename,
             args.study_ids,
-            args.sample_ids,
+            args.patient_ids if hasattr(args, 'patient_ids') else None,
+            args.sample_ids if hasattr(args, 'sample_ids') else None,
             args.update_generic_assay_entity)
 
 # ------------------------------------------------------------------------------
