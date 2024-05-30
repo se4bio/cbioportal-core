@@ -31,6 +31,7 @@ import org.mskcc.cbio.portal.dao.DaoGeneticAlteration;
 import org.mskcc.cbio.portal.dao.DaoGeneticProfile;
 import org.mskcc.cbio.portal.dao.DaoGeneticProfileSamples;
 import org.mskcc.cbio.portal.dao.DaoSample;
+import org.mskcc.cbio.portal.dao.JdbcUtil;
 import org.mskcc.cbio.portal.model.GeneticProfile;
 import org.mskcc.cbio.portal.model.Sample;
 import org.mskcc.cbio.portal.util.ProgressMonitor;
@@ -57,6 +58,18 @@ public class RemoveSamples extends ConsoleRunnable {
     private Set<String> sampleIds;
 
     public void run() {
+        JdbcUtil.getTransactionTemplate().execute(status -> {
+            try {
+                doRun();
+            } catch (Throwable e) {
+                status.setRollbackOnly();
+                throw new RuntimeException(e);
+            }
+            return null;
+        });
+    }
+
+    private void doRun() {
         parseArgs();
         ProgressMonitor.setCurrentMessage("Removing sample id(s) ("
                 + String.join(", ", sampleIds)
